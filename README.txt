@@ -1,3 +1,9 @@
+Recorder is a program designed to record and loop music clips.
+As more clips are added, older clips will decrease in volume gradually until they stop playing.
+The app will create .wav files named recording_.wav in the directory it is run.
+
+=============================================================================
+
 To install:
 
 You need python 3.6 as well as two other modules.
