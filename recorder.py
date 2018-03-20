@@ -1,8 +1,6 @@
 from sys import byteorder
 from array import array
-from struct import pack
-from pydub import AudioSegment
-from pydub.playback import play
+from struct import pack, unpack
 
 import asyncio
 import tkinter as tk
@@ -14,36 +12,40 @@ import threading
 ################################################################################################
 # Parameters you can edit
 
+SAVETOFILE = False               # Set true to save recordings to file
+FEEDBACK = False                 # Set true to listen to the recording during recording *WARNING: playback is slightly delayed*
 CONCURRENT_SONGS = 10            # how many songs playing at full volume before the first song starts becoming softer
 TIME_TO_RECORD = 60              # time per recording in seconds
-VOLUME_REDUCTION = 10            # how much to reduce volume per iteration
-MIN_VOLUME = 30                  # the lowest volume; if volume is lower than this, the song stops playing
+VOLUME_REDUCTION = 0.25          # how much to reduce volume per iteration
 BUTTON_PRESS = "a"               # which button to press to start recording
 
 ################################################################################################
 
-THRESHOLD = 500
-CHUNK_SIZE = 1024
+CHUNK_SIZE = 256
 FORMAT = pyaudio.paInt16
 RATE = 44100
 
 class Songplay(threading.Thread):
-    volumeReduce = 0
+    volume = 1
     path = ""
-    def __init__(self, path):
+    data = []
+    sample = 0
+    def __init__(self, path, data, sample_width):
         threading.Thread.__init__(self)
         self.path = path
+        self.data = data
+        self.sample = sample_width
         self.start()
 
     def run(self):
-        while (self.volumeReduce <= MIN_VOLUME):
-            reduce_and_play(self.path, self.volumeReduce)
+        while (self.volume > 0):
+            reduce_and_play(self.data, self.volume)
 
     def reduceVolume(self):
-        self.volumeReduce = self.volumeReduce + VOLUME_REDUCTION
+        self.volume = self.volume - VOLUME_REDUCTION
 
     def getVolume(self):
-        return self.volumeReduce
+        return self.volume
 
 class Recorder(threading.Thread):
     name = ""
@@ -56,15 +58,17 @@ class Recorder(threading.Thread):
         self.playback = playback
         self.start()
 
-    def callback(self):
+    def callback(self, sample_width, file, data):
         print("Looping " + self.name)
-        song = Songplay(self.name)
+        song = Songplay(self.name, data, sample_width)
+        if SAVETOFILE:
+            record_to_file(self.name, sample_width, file)
         playback.addSong(song)
 
     def run(self):
-        record_to_file(self.name, self.time)
+        sample_width, file, data = record(self.time)
         print("Finished recording")
-        self.callback()
+        self.callback(sample_width, file, data)
 
 class PlayBack:
     i = 0
@@ -80,13 +84,13 @@ class PlayBack:
             return
         self.canRecord = False
         self.i = self.i + 1
-        name = "recording" + str(self.i) + ".wav"
+        name = "recording_" + str(self.i)
         print("Adding song " + name)
         Recorder(name, TIME_TO_RECORD, self)
 
     def addSong(self, song):
         self.songs.append(song)
-        while (self.songs[0].getVolume() >= MIN_VOLUME):
+        while (self.songs[0].getVolume() <= 0):
             gone = self.songs.pop(0)
             print("Removing " + gone.path)
         if len(self.songs) > CONCURRENT_SONGS:
@@ -96,37 +100,37 @@ class PlayBack:
         print("")
 
 def record(timeSec):
-    """
-    Record a word or words from the microphone and 
-    return the data as an array of signed shorts.
-    """
     p = pyaudio.PyAudio()
     stream = p.open(format=FORMAT, channels=1, rate=RATE,
         input=True, output=True,
         frames_per_buffer=CHUNK_SIZE)
 
     r = array('h')
+    d = []
     startTime = time.clock()
+    
+    for i in range(0, int(RATE / CHUNK_SIZE * timeSec)):
+        data = stream.read(CHUNK_SIZE)
+        d.append(data)
+        if FEEDBACK:
+            stream.write(data, CHUNK_SIZE)
 
-    while startTime + timeSec > time.clock():
-        # little endian, signed short
-        snd_data = array('h', stream.read(CHUNK_SIZE))
-        if byteorder == 'big':
-            snd_data.byteswap()
-        r.extend(snd_data)
+        if SAVETOFILE:
+            snd_data = array('h', data)
+            if byteorder == 'big':
+                snd_data.byteswap()
+            r.extend(snd_data)
 
     sample_width = p.get_sample_size(FORMAT)
     stream.stop_stream()
     stream.close()
     p.terminate()
 
-    return sample_width, r
+    return sample_width, r, d
 
-def record_to_file(path, timeSec):
-    "Records from the microphone and outputs the resulting data to 'path'"
-    sample_width, data = record(timeSec)
+def record_to_file(path, sample_width, data):
     data = pack('<' + ('h'*len(data)), *data)
-
+    path = path + ".wav"
     wf = wave.open(path, 'wb')
     wf.setnchannels(1)
     wf.setsampwidth(sample_width)
@@ -134,10 +138,25 @@ def record_to_file(path, timeSec):
     wf.writeframes(data)
     wf.close()
 
-def reduce_and_play(wavPath, reduction):  
-    song = AudioSegment.from_wav(wavPath)
-    song = song - reduction
-    play(song)
+def reduce_and_play(data, reduction):
+    p = pyaudio.PyAudio()
+    stream = p.open(format=FORMAT, channels=1, rate=RATE,
+        input=True, output=True,
+        frames_per_buffer=CHUNK_SIZE)
+        
+    for d in data:
+        int_data = array('h', d)
+        if byteorder == 'big':
+            snd_data.byteswap()
+        r = array('h')
+        for i in int_data:
+            r.append(int(i * reduction))
+        
+        stream.write(bytes(r), CHUNK_SIZE)
+        
+    stream.stop_stream()
+    stream.close()
+    p.terminate()
 
 def record_new(playback):
     playback.recordSong()
@@ -152,10 +171,11 @@ if __name__ == '__main__':
     print("Usage:")
     print("Click the button, or press the designated BUTTON_PRESS (default: a) on your keyboard to record.\n")
     print("Current parameters:")
+    print("FEEDBACK = " + str(FEEDBACK))
+    print("SAVING TO FILE = " + str(SAVETOFILE))
     print("CONCURRENT_SONGS = " + str(CONCURRENT_SONGS))
     print("TIME_TO_RECORD = " + str(TIME_TO_RECORD))
     print("VOLUME_REDUCTION = " + str(VOLUME_REDUCTION))
-    print("MIN_VOLUME = " + str(MIN_VOLUME))
     print("BUTTON_PRESS = " + BUTTON_PRESS + "\n")
 
     playback = PlayBack()
