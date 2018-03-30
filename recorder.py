@@ -181,7 +181,7 @@ def reduce_and_play(data, reduction, stream, timeDiff):
     for d in range(int(RATE / CHUNK_SIZE * timeDiff), len(data)):
         int_data = array('h', data[d])
         if byteorder == 'big':
-            snd_data.byteswap()
+            int_data.byteswap()
         r = array('h')
         for i in int_data:
             r.append(int(i * reduction))
