@@ -1,9 +1,8 @@
 from sys import byteorder
 from array import array
-from struct import pack, unpack
-from datetime import datetime, timedelta
+from struct import pack
+from datetime import datetime
 
-import asyncio
 import tkinter as tk
 import time
 import pyaudio
