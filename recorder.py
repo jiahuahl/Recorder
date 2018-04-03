@@ -1,28 +1,36 @@
 from sys import byteorder
 from array import array
-from struct import pack, unpack
-from datetime import datetime, timedelta
+from struct import pack
+from datetime import datetime
 
-import asyncio
 import tkinter as tk
 import time
 import pyaudio
 import wave
 import threading
 
-################################################################################################
+###############################################################################
 # Parameters you can edit
 
-SAVETOFILE = False               # Set true to save recordings to file
-FEEDBACK = False                 # Set true to listen to the recording during recording *WARNING: playback is slightly delayed*
-CONCURRENT_SONGS = 10            # how many songs playing at full volume before the first song starts becoming softer
-TIME_TO_RECORD = 5              # time per recording in seconds
-VOLUME_REDUCTION = 0.25          # how much to reduce volume per iteration
-BUTTON_PRESS = "a"               # which button to press to start recording
-TIMING_OFFSET = -180             # How much to offset each recording.
-VERBOSE_TIMING = False           # Enable to show logs related to timing, for debugging
+# Set true to save recordings to file
+SAVETOFILE = False
+# Set true to listen to the recording during recording
+# WARNING: playback is slightly delayed*
+FEEDBACK = False
+# how many songs playing at full volume before first song starts getting softer
+CONCURRENT_SONGS = 10
+# time per recording in seconds
+TIME_TO_RECORD = 5
+# how much to reduce volume per iteration
+VOLUME_REDUCTION = 0.25
+# which button to press to start recording
+BUTTON_PRESS = "a"
+# How much to offset each recording.
+TIMING_OFFSET = -180
+# Enable to show logs related to timing, for debugging
+VERBOSE_TIMING = False
 
-################################################################################################
+###############################################################################
 
 CHUNK_SIZE = 1024
 FORMAT = pyaudio.paInt16
@@ -30,10 +38,13 @@ RATE = 44100
 START_TIME = datetime.now()
 PYAUDIO = pyaudio.PyAudio()
 
+
 def millis():
-   dt = datetime.now() - START_TIME
-   ms = (dt.days * 24 * 60 * 60 + dt.seconds) * 1000 + dt.microseconds / 1000.0
-   return ms
+    dt = datetime.now() - START_TIME
+    ms = (dt.days * 24 * 60 * 60 + dt.seconds) * 1000\
+        + dt.microseconds / 1000.0
+    return ms
+
 
 class Songplay(threading.Thread):
     volume = 1
@@ -42,7 +53,7 @@ class Songplay(threading.Thread):
     sample = 0
     timeOffset = 0
     stream = 0
-    
+
     def __init__(self, path, data, sample_width, timeOffset, stream):
         threading.Thread.__init__(self)
         self.path = path
@@ -56,24 +67,27 @@ class Songplay(threading.Thread):
         currOffset = millis() % (TIME_TO_RECORD * 1000)
         diff = currOffset - self.timeOffset
         if (diff < 0):
-           diff = (TIME_TO_RECORD * 1000) + diff
+            diff = (TIME_TO_RECORD * 1000) + diff
         if VERBOSE_TIMING:
-            print("curr: " + str(millis() % (TIME_TO_RECORD * 1000)) + ", time: " + str(self.timeOffset))
+            print("curr: " + str(millis() % (TIME_TO_RECORD * 1000)) +
+                  ", time: " + str(self.timeOffset))
         reduce_and_play(self.data, self.volume, self.stream, diff / 1000)
         while (self.volume > 0):
             diff = 0
             currOffset = millis() % (TIME_TO_RECORD * 1000)
             if (self.timeOffset > currOffset):
                 if VERBOSE_TIMING:
-                    print("waiting " + str((self.timeOffset - currOffset)/1000))
+                    print("waiting " +
+                          str((self.timeOffset - currOffset)/1000))
                 time.sleep((self.timeOffset - currOffset)/1000)
             else:
                 diff = currOffset - self.timeOffset
 
             if VERBOSE_TIMING:
-                print("curr: " + str(millis() % (TIME_TO_RECORD * 1000)) + ", time: " + str(self.timeOffset))
+                print("curr: " + str(millis() % (TIME_TO_RECORD * 1000)) +
+                      ", time: " + str(self.timeOffset))
             reduce_and_play(self.data, self.volume, self.stream, diff / 1000)
-            
+
     def end(self):
         self.stream.stop_stream()
         self.stream.close()
@@ -83,6 +97,7 @@ class Songplay(threading.Thread):
 
     def getVolume(self):
         return self.volume
+
 
 class Recorder(threading.Thread):
     name = ""
@@ -105,9 +120,11 @@ class Recorder(threading.Thread):
         playback.addSong(song)
 
     def run(self):
-        sample_width, file, data, timeOffset, stream = record(self.time, self.stream)
+        sample_width, file, data, timeOffset, stream =\
+            record(self.time, self.stream)
         print("Finished recording")
         self.callback(sample_width, file, data, timeOffset, stream)
+
 
 class PlayBack:
     i = 0
@@ -117,8 +134,9 @@ class PlayBack:
 
     def __init__(self):
         self.stream = PYAUDIO.open(format=FORMAT, channels=1, rate=RATE,
-               input=True, output=True,
-               frames_per_buffer=CHUNK_SIZE)
+                                   input=True, output=True,
+                                   frames_per_buffer=CHUNK_SIZE)
+
     def recordSong(self):
         if not self.canRecord:
             print("Please wait until current recording is finished.")
@@ -139,10 +157,11 @@ class PlayBack:
             for i in range(0, len(self.songs) - CONCURRENT_SONGS):
                 self.songs[i].reduceVolume()
         self.stream = PYAUDIO.open(format=FORMAT, channels=1, rate=RATE,
-            input=True, output=True,
-            frames_per_buffer=CHUNK_SIZE)
+                                   input=True, output=True,
+                                   frames_per_buffer=CHUNK_SIZE)
         self.canRecord = True
         print("")
+
 
 def record(timeSec, stream):
     startTime = millis()
@@ -165,6 +184,7 @@ def record(timeSec, stream):
     sample_width = PYAUDIO.get_sample_size(FORMAT)
     return sample_width, r, d, (startTime % (timeSec*1000)), stream
 
+
 def record_to_file(path, sample_width, data):
     data = pack('<' + ('h'*len(data)), *data)
     path = path + ".wav"
@@ -174,6 +194,7 @@ def record_to_file(path, sample_width, data):
     wf.setframerate(RATE)
     wf.writeframes(data)
     wf.close()
+
 
 def reduce_and_play(data, reduction, stream, timeDiff):
     if VERBOSE_TIMING:
@@ -185,21 +206,26 @@ def reduce_and_play(data, reduction, stream, timeDiff):
         r = array('h')
         for i in int_data:
             r.append(int(i * reduction))
-        
+
         stream.write(bytes(r), CHUNK_SIZE)
+
 
 def record_new(playback):
     playback.recordSong()
+
 
 def get_loops(playback):
     for song in playback.songs:
         print(song.path + ", volume: -" + str(song.volumeReduce))
     print("")
 
+
 if __name__ == '__main__':
     print("\n")
     print("Usage:")
-    print("Click the button, or press the designated BUTTON_PRESS (default: a) on your keyboard to record.\n")
+    print("Click the button,"
+          "or press the designated BUTTON_PRESS (default: a)"
+          "on your keyboard to record.\n")
     print("Current parameters:")
     print("FEEDBACK = " + str(FEEDBACK))
     print("SAVING TO FILE = " + str(SAVETOFILE))
@@ -207,13 +233,15 @@ if __name__ == '__main__':
     print("TIME_TO_RECORD = " + str(TIME_TO_RECORD))
     print("VOLUME_REDUCTION = " + str(VOLUME_REDUCTION))
     print("BUTTON_PRESS = " + BUTTON_PRESS)
-    print("TIMING_OFFSET = " + str(TIMING_OFFSET)+ "\n")
+    print("TIMING_OFFSET = " + str(TIMING_OFFSET) + "\n")
 
     playback = PlayBack()
     root = tk.Tk()
-    button = tk.Button(root, text='Record clip', command=lambda: record_new(playback))
-    button2 = tk.Button(root, text='List looping clips', command=lambda: get_loops(playback))
-    root.bind(BUTTON_PRESS,lambda event: record_new(playback))
+    button = tk.Button(root, text='Record clip',
+                       command=lambda: record_new(playback))
+    button2 = tk.Button(root, text='List looping clips',
+                        command=lambda: get_loops(playback))
+    root.bind(BUTTON_PRESS, lambda event: record_new(playback))
     button.pack()
     button2.pack()
     root.mainloop()
